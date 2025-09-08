@@ -10,8 +10,8 @@ import zipfile
 import stat
 
 # Path ke Xray binary
-XRAY_PATH = "./bin/xray.exe"  # Diubah ke .exe untuk Windows berdasarkan path error
-XRAY_URL = "https://github.com/XTLS/Xray-core/releases/download/v25.8.3/Xray-windows-64.zip"  # Versi terbaru untuk Windows
+XRAY_PATH = "./bin/xray"  # Diubah ke .exe untuk Windows berdasarkan path error
+XRAY_URL = "https://github.com/XTLS/Xray-core/releases/download/v25.8.3/Xray-linux-64.zip"  # Versi terbaru untuk Windows
 
 # Port lokal untuk proxy test
 LOCAL_PORT = 1080
