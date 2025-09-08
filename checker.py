@@ -37,9 +37,8 @@ def setup_xray():
                 if chunk:
                     f.write(chunk)
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extract("xray", "bin")  # Ekstrak xray untuk Linux
+            zip_ref.extract("xray", "bin")
         os.remove(zip_path)
-        # Set izin untuk Linux
         os.chmod(XRAY_PATH, stat.S_IEXEC | stat.S_IREAD | stat.S_IWRITE)
         print(f"Xray binary extracted to: {XRAY_PATH}")
         return True
@@ -62,4 +61,205 @@ def fetch_sub_url(sub_url):
         print(f"Gagal ambil sub URL: {e}")
         return []
 
-def parse_config(config_str
+def parse_config(config_str):
+    """Parse config VMess/VLESS/Trojan/Shadowsocks ke dict"""
+    if config_str.startswith('vmess://'):
+        try:
+            payload = base64.b64decode(config_str[8:]).decode('utf-8')
+            return json.loads(payload), 'vmess'
+        except:
+            return None, None
+    elif config_str.startswith('vless://'):
+        try:
+            parsed = urllib.parse.urlparse(config_str)
+            query = urllib.parse.parse_qs(parsed.query)
+            return {
+                'ps': parsed.fragment or 'vless',
+                'add': parsed.hostname,
+                'port': parsed.port if parsed.port else 443,
+                'id': parsed.username,
+                'net': parsed.scheme.split('+')[1] if '+' in parsed.scheme else 'tcp',
+                'path': query.get('path', ['/'])[0],
+                'tls': 'tls' if query.get('security', [''])[0].lower() == 'tls' else 'none',
+                'sni': query.get('sni', [parsed.hostname])[0]
+            }, 'vless'
+        except:
+            return None, None
+    elif config_str.startswith('trojan://'):
+        try:
+            parsed = urllib.parse.urlparse(config_str)
+            query = urllib.parse.parse_qs(parsed.query)
+            port = parsed.port if parsed.port else 443
+            return {
+                'ps': parsed.fragment or 'trojan',
+                'add': parsed.hostname,
+                'port': port,
+                'password': parsed.username,
+                'net': query.get('type', ['tcp'])[0],
+                'path': query.get('path', ['/'])[0],
+                'sni': query.get('sni', [parsed.hostname])[0],
+                'security': 'tls'
+            }, 'trojan'
+        except:
+            return None, None
+    elif config_str.startswith('ss://'):
+        try:
+            # Decode base64 untuk Shadowsocks
+            decoded = base64.b64decode(config_str[5:]).decode('utf-8')
+            # Pisahkan method:password@host:port
+            if '@' in decoded and ':' in decoded:
+                method_password, host_port = decoded.split('@')
+                host, port = host_port.rsplit(':', 1)
+                method, password = method_password.split(':', 1)
+                return {
+                    'ps': urllib.parse.parse_qs(urllib.parse.urlparse(config_str).query).get('name', ['shadowsocks'])[0],
+                    'add': host,
+                    'port': int(port) if port else 8388,  # Default port Shadowsocks
+                    'method': method,
+                    'password': password
+                }, 'shadowsocks'
+            return None, None
+        except:
+            return None, None
+    return None, None
+
+def generate_xray_config(parsed_config, protocol):
+    """Buat config JSON untuk Xray"""
+    if protocol == 'vmess':
+        return {
+            "log": {"loglevel": "none"},
+            "inbounds": [{"port": LOCAL_PORT, "protocol": "socks", "listen": "127.0.0.1", "settings": {"udp": True}}],
+            "outbounds": [{
+                "protocol": "vmess",
+                "settings": {"vnext": [{"address": parsed_config['add'], "port": int(parsed_config['port']), "users": [{"id": parsed_config['id'], "alterId": int(parsed_config.get('aid', 0)), "security": parsed_config.get('scy', 'auto')}]}]},
+                "streamSettings": {
+                    "network": parsed_config.get('net', 'tcp'),
+                    "security": parsed_config.get('tls', 'none'),
+                    "wsSettings": {"path": parsed_config.get('path', '/')} if parsed_config.get('net') == 'ws' else None
+                }
+            }]
+        }
+    elif protocol == 'vless':
+        return {
+            "log": {"loglevel": "none"},
+            "inbounds": [{"port": LOCAL_PORT, "protocol": "socks", "listen": "127.0.0.1", "settings": {"udp": True}}],
+            "outbounds": [{
+                "protocol": "vless",
+                "settings": {"vnext": [{"address": parsed_config['add'], "port": int(parsed_config['port']), "users": [{"id": parsed_config['id'], "encryption": "none"}]}]},
+                "streamSettings": {
+                    "network": parsed_config['net'],
+                    "security": parsed_config['tls'],
+                    "wsSettings": {"path": parsed_config['path']} if parsed_config['net'] == 'ws' else None
+                }
+            }]
+        }
+    elif protocol == 'trojan':
+        return {
+            "log": {"loglevel": "none"},
+            "inbounds": [{"port": LOCAL_PORT, "protocol": "socks", "listen": "127.0.0.1", "settings": {"udp": True}}],
+            "outbounds": [{
+                "protocol": "trojan",
+                "settings": {"servers": [{"address": parsed_config['add'], "port": int(parsed_config['port']), "password": parsed_config['password']}]},
+                "streamSettings": {"network": parsed_config['net'], "security": "tls", "tlsSettings": {"serverName": parsed_config['sni']}}
+            }]
+        }
+    elif protocol == 'shadowsocks':
+        return {
+            "log": {"loglevel": "none"},
+            "inbounds": [{"port": LOCAL_PORT, "protocol": "socks", "listen": "127.0.0.1", "settings": {"udp": True}}],
+            "outbounds": [{
+                "protocol": "shadowsocks",
+                "settings": {
+                    "servers": [{
+                        "address": parsed_config['add'],
+                        "port": int(parsed_config['port']),
+                        "method": parsed_config['method'],
+                        "password": parsed_config['password']
+                    }]
+                }
+            }]
+        }
+    return None
+
+def test_config(config_str):
+    """Test config: parse, jalankan Xray, cek latency"""
+    parsed, protocol = parse_config(config_str)
+    if not parsed or not protocol:
+        return False, "Parse gagal", None
+    
+    config_json = generate_xray_config(parsed, protocol)
+    if not config_json:
+        return False, "Generate config gagal", None
+    
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        json.dump(config_json, f, indent=2)
+        temp_config = f.name
+    
+    try:
+        xray_full_path = os.path.abspath(XRAY_PATH)
+        proc = subprocess.Popen([xray_full_path, 'run', '-c', temp_config], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        time.sleep(2)
+        start_time = time.time()
+        proxies = {'http': f'socks5://127.0.0.1:{LOCAL_PORT}', 'https': f'socks5://127.0.0.1:{LOCAL_PORT}'}
+        response = requests.get(TEST_URL, proxies=proxies, timeout=TIMEOUT)
+        latency = int((time.time() - start_time) * 1000)
+        
+        if response.status_code == 200 and latency < MAX_LATENCY:
+            proc.terminate()
+            os.unlink(temp_config)
+            return True, f"Aktif, latency: {latency}ms", latency
+        else:
+            proc.terminate()
+            os.unlink(temp_config)
+            return False, f"Gagal connect atau latency tinggi: {latency}ms", latency
+    except Exception as e:
+        if 'proc' in locals():
+            proc.terminate()
+        if os.path.exists(temp_config):
+            os.unlink(temp_config)
+        return False, f"Error: {e}", None
+
+def main():
+    # Setup Xray binary
+    if not setup_xray():
+        print("Gagal setup Xray, keluar...")
+        return
+    
+    # Ambil SUB_URL dari environment variable (GitHub Secrets)
+    sub_url = os.environ.get('SUB_URL', '')
+    if not sub_url:
+        print("SUB_URL tidak diset di environment variable!")
+        return
+    
+    print(f"Fetching configs from: {sub_url}")
+    
+    configs = fetch_sub_url(sub_url)
+    if not configs:
+        print("Tidak ada config dari sub URL!")
+        return
+    
+    active_configs = []
+    print(f"Testing {len(configs)} configs...")
+    
+    for i, config in enumerate(configs, 1):
+        print(f"[{i}/{len(configs)}] Testing: {config[:50]}...")
+        is_active, msg, latency = test_config(config)
+        if is_active:
+            active_configs.append((config, latency))
+            print(f"  ✓ {msg}")
+        else:
+            print(f"  ✗ {msg}")
+    
+    # Urutkan berdasarkan latency (tercepat dulu)
+    active_configs.sort(key=lambda x: x[1] if x[1] is not None else float('inf'))
+    
+    # Simpan ke file dalam format asli
+    output_file = "active_configs.txt"
+    with open(output_file, 'w') as f:
+        for config, latency in active_configs:
+            f.write(f"{config} # Latency: {latency}ms\n")
+    
+    print(f"\nSelesai! {len(active_configs)} config aktif disimpan di {output_file}")
+
+if __name__ == "__main__":
+    main()
