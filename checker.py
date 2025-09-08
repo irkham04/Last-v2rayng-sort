@@ -10,8 +10,8 @@ import zipfile
 import stat
 
 # Path ke Xray binary
-XRAY_PATH = "./bin/xray"
-XRAY_URL = "https://github.com/XTLS/Xray-core/releases/download/v1.8.31/Xray-linux-64.zip"  # Versi terbaru (untuk Linux di GitHub Actions)
+XRAY_PATH = "./bin/xray.exe"  # Diubah ke .exe untuk Windows berdasarkan path error
+XRAY_URL = "https://github.com/XTLS/Xray-core/releases/download/v25.8.3/Xray-windows-64.zip"  # Versi terbaru untuk Windows
 
 # Port lokal untuk proxy test
 LOCAL_PORT = 1080
@@ -35,7 +35,7 @@ def setup_xray():
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-            zip_ref.extract("xray", "bin")
+            zip_ref.extract("xray.exe", "bin")  # Ekstrak xray.exe untuk Windows
         os.remove(zip_path)
         os.chmod(XRAY_PATH, stat.S_IXUSR | stat.S_IRUSR | stat.S_IWUSR)
         print("Xray binary ready!")
@@ -74,7 +74,7 @@ def parse_config(config_str):
             return {
                 'ps': parsed.fragment or 'vless',
                 'add': parsed.hostname,
-                'port': parsed.port,
+                'port': parsed.port if parsed.port else 443,  # Default ke 443 jika None
                 'id': parsed.username,
                 'net': parsed.scheme.split('+')[1] if '+' in parsed.scheme else 'tcp',
                 'path': query.get('path', ['/'])[0],
@@ -87,10 +87,11 @@ def parse_config(config_str):
         try:
             parsed = urllib.parse.urlparse(config_str)
             query = urllib.parse.parse_qs(parsed.query)
+            port = parsed.port if parsed.port else 443  # Default ke 443 jika None
             return {
                 'ps': parsed.fragment or 'trojan',
                 'add': parsed.hostname,
-                'port': parsed.port,
+                'port': port,
                 'password': parsed.username,
                 'net': query.get('type', ['tcp'])[0],
                 'path': query.get('path', ['/'])[0],
@@ -186,11 +187,9 @@ def main():
         print("Gagal setup Xray, keluar...")
         return
     
-    # Ambil sub URL dari environment variable (GitHub Secrets)
-    sub_url = os.environ.get('SUB_URL', '')
-    if not sub_url:
-        print("SUB_URL tidak diset di environment variable!")
-        return
+    # Hardcode sub URL untuk tes lokal, fallback ke environment variable untuk GitHub Actions
+    sub_url = "https://raw.githubusercontent.com/Epodonios/v2ray-configs/refs/heads/main/All_Configs_Sub.txt"
+    print(f"Fetching configs from: {sub_url}")
     
     configs = fetch_sub_url(sub_url)
     if not configs:
