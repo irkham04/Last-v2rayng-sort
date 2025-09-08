@@ -2,14 +2,14 @@ name: V2Ray Config Checker
 
 on:
   schedule:
-    - cron: '*/30 * * * *'  # Jalankan setiap 30 menit untuk mengurangi rate limit
-  workflow_dispatch:  # Bisa dijalankan manual
+    - cron: '*/30 * * * *'  # Jalankan setiap 30 menit
+  workflow_dispatch:
 
 jobs:
   check-configs:
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # Izin untuk commit dan push
+      contents: write
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
@@ -32,12 +32,12 @@ jobs:
           echo "Menjalankan checker.py dengan timeout 300 detik"
           timeout 300 python checker.py || echo "Script timeout atau gagal"
 
-      - name: Commit and push results
+      - name: Commit and push Xray + results
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add active_configs.txt
-          git commit -m "Update active_configs.txt with latest active configs" || echo "No changes to commit"
+          git add bin/xray active_configs.txt
+          git commit -m "Update Xray binary + active configs" || echo "No changes to commit"
           git push origin main
