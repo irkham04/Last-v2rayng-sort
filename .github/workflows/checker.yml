@@ -13,8 +13,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}  # Gunakan GITHUB_TOKEN untuk checkout
-          ref: main  # Pastikan checkout branch main
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: main  # Sesuaikan dengan branch utama
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -23,14 +23,14 @@ jobs:
         run: pip install requests
       - name: Run checker
         env:
-          SUB_URL: ${{ secrets.SUB_URL }}
+          SUB_URL: ${{ secrets.SUB_URL }}  # Ambil dari Secrets
         run: python checker.py
       - name: Commit and push results
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Gunakan GITHUB_TOKEN untuk push
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add active_configs.txt
           git commit -m "Update active_configs.txt with latest active configs" || echo "No changes to commit"
-          git push origin main
+          git push origin main  # Sesuaikan dengan branch utama
