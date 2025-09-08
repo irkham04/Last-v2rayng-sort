@@ -8,8 +8,13 @@ on:
 jobs:
   check-configs:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Izin untuk commit dan push
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}  # Gunakan GITHUB_TOKEN untuk checkout
+          ref: main  # Pastikan checkout branch main
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -21,9 +26,11 @@ jobs:
           SUB_URL: ${{ secrets.SUB_URL }}
         run: python checker.py
       - name: Commit and push results
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # Gunakan GITHUB_TOKEN untuk push
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add active_configs.txt
           git commit -m "Update active_configs.txt with latest active configs" || echo "No changes to commit"
-          git push
+          git push origin main
