@@ -2,7 +2,7 @@ name: V2Ray Config Checker
 
 on:
   schedule:
-    - cron: '*/30 * * * *'  # Jalankan setiap 30 menit
+    - cron: '*/0 * * * *'  # Jalankan setiap 30 menit
   workflow_dispatch:
 
 jobs:
